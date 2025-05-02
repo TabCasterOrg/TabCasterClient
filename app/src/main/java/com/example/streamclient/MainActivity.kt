@@ -1,7 +1,10 @@
 package com.example.streamclient3
 
-
+import android.content.pm.ActivityInfo
 import android.os.Bundle
+import android.view.View
+import android.view.WindowInsets
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
@@ -17,7 +20,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.ui.PlayerView
 import com.example.streamclient3.databinding.ActivityMainBinding
+import androidx.constraintlayout.widget.ConstraintLayout
 
 class MainActivity : AppCompatActivity() {
 
@@ -26,11 +31,17 @@ class MainActivity : AppCompatActivity() {
     private var playWhenReady = true
     private var currentItem = 0
     private var playbackPosition = 0L
-
+    private var isFullscreen = false
+    private val originalPlayerViewParams by lazy {
+        binding.playerView.layoutParams as ConstraintLayout.LayoutParams
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Enable fullscreen button in PlayerView
+        binding.playerView.setFullscreenButtonClickListener { toggleFullscreen() }
 
         binding.connectButton.setOnClickListener {
             releasePlayer()
@@ -38,8 +49,69 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun toggleFullscreen() {
+        if (isFullscreen) {
+            exitFullscreen()
+        } else {
+            enterFullscreen()
+        }
+    }
+
+    private fun enterFullscreen() {
+        // Hide system UI
+        window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_FULLSCREEN
+                        or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                )
+
+        // Hide action bar
+        supportActionBar?.hide()
+
+        // Set landscape orientation
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+
+        // Make PlayerView fill the screen
+        val params = ConstraintLayout.LayoutParams(
+            ConstraintLayout.LayoutParams.MATCH_PARENT,
+            ConstraintLayout.LayoutParams.MATCH_PARENT
+        )
+        params.topToTop = ConstraintLayout.LayoutParams.PARENT_ID
+        params.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+        params.startToStart = ConstraintLayout.LayoutParams.PARENT_ID
+        params.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
+        binding.playerView.layoutParams = params
+
+        // Hide other UI elements
+        binding.serverIpEditText.visibility = View.GONE
+        binding.connectButton.visibility = View.GONE
+
+        isFullscreen = true
+    }
+
+    private fun exitFullscreen() {
+        // Show system UI
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+
+        // Show action bar
+        supportActionBar?.show()
+
+        // Set portrait orientation
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+
+        // Restore original PlayerView layout
+        binding.playerView.layoutParams = originalPlayerViewParams
+
+        // Show other UI elements
+        binding.serverIpEditText.visibility = View.VISIBLE
+        binding.connectButton.visibility = View.VISIBLE
+
+        isFullscreen = false
+    }
+
     private fun initializePlayer() {
         val serverAddress = binding.serverIpEditText.text.toString().trim()
+
         if (serverAddress.isEmpty()) {
             Toast.makeText(this, "Please enter server IP and port", Toast.LENGTH_SHORT).show()
             return
@@ -48,29 +120,30 @@ class MainActivity : AppCompatActivity() {
         try {
             releasePlayer()
 
-            // 1. Custom zero-buffer load control
-            val loadControl = createZeroBufferLoadControl()
+            val loadControl: LoadControl = DefaultLoadControl.Builder()
+                .setBufferDurationsMs(5, 5, 5, 5)
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .setBackBuffer(0, false)
+                .setTargetBufferBytes(-1)
+                .build()
 
-            // 2. Custom UDP data source
             val udpDataSourceFactory = DataSource.Factory {
-                ZeroLatencyUdpDataSource(50) // 50ms timeout
+                UdpDataSource(50)
             }
 
-            // 3. Build player with minimal latency settings
             player = ExoPlayer.Builder(this)
                 .setLoadControl(loadControl)
                 .setRenderersFactory(
                     DefaultRenderersFactory(this)
                         .setAllowedVideoJoiningTimeMs(0)
-                        .setEnableDecoderFallback(true)
                 )
-                .setClock(Clock.DEFAULT) // Use system clock for timing
-                .setPriorityTaskManager(null) // No task prioritization
-                .setUseLazyPreparation(false) // Prepare immediately
-                .setSeekParameters(SeekParameters.EXACT) // No seek buffering
                 .build()
                 .also { exoPlayer ->
                     binding.playerView.player = exoPlayer
+                    binding.playerView.setShowNextButton(false)
+                    binding.playerView.setShowPreviousButton(false)
+                    binding.playerView.setShowFastForwardButton(false)
+                    binding.playerView.setShowRewindButton(false)
 
                     val port = extractPort(serverAddress)
                     val uri = "udp://0.0.0.0:$port?pkt_size=1316"
@@ -82,21 +155,14 @@ class MainActivity : AppCompatActivity() {
                     )
 
                     val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
-                        .setLoadErrorHandlingPolicy(object : DefaultLoadErrorHandlingPolicy() {
-                            override fun getRetryDelayMsFor(
-                                loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo
-                            ): Long {
-                                return 0 // No retry delay
-                            }
-                        })
+                        .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(10))
                         .createMediaSource(mediaItem)
 
-                    exoPlayer.playWhenReady = true
-                    exoPlayer.repeatMode = Player.REPEAT_MODE_OFF
-                    exoPlayer.setMediaSource(mediaSource, true) // Reset position
+                    exoPlayer.setMediaSource(mediaSource)
+                    exoPlayer.playWhenReady = playWhenReady
+                    exoPlayer.seekTo(currentItem, playbackPosition)
                     exoPlayer.prepare()
 
-                    // Error handling
                     exoPlayer.addListener(object : Player.Listener {
                         override fun onPlayerError(error: PlaybackException) {
                             runOnUiThread {
@@ -107,12 +173,24 @@ class MainActivity : AppCompatActivity() {
                                 ).show()
                             }
                         }
+
+                        override fun onPlaybackStateChanged(state: Int) {
+                            if (state == Player.STATE_BUFFERING) {
+                                runOnUiThread {
+                                    Toast.makeText(
+                                        this@MainActivity,
+                                        "Buffering...",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                        }
                     })
                 }
 
             Toast.makeText(
                 this,
-                "Listening on UDP port ${extractPort(serverAddress)} (zero-buffer mode)",
+                "Listening on UDP port ${extractPort(serverAddress)}",
                 Toast.LENGTH_LONG
             ).show()
 
@@ -124,6 +202,7 @@ class MainActivity : AppCompatActivity() {
             ).show()
         }
     }
+
     private fun extractPort(serverAddress: String): String {
         return if (serverAddress.contains(":")) {
             serverAddress.split(":")[1].takeIf { it.isNotEmpty() } ?: "5001"
@@ -177,5 +256,15 @@ class MainActivity : AppCompatActivity() {
             releasePlayer()
         }
     }
-}
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && isFullscreen) {
+            window.decorView.systemUiVisibility = (
+                    View.SYSTEM_UI_FLAG_FULLSCREEN
+                            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    )
+        }
+    }
+}
