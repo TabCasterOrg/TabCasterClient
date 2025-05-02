@@ -40,63 +40,60 @@ class MainActivity : AppCompatActivity() {
 
     private fun initializePlayer() {
         val serverAddress = binding.serverIpEditText.text.toString().trim()
-
         if (serverAddress.isEmpty()) {
             Toast.makeText(this, "Please enter server IP and port", Toast.LENGTH_SHORT).show()
             return
         }
 
         try {
-            releasePlayer() // Clean up any existing player first
+            releasePlayer()
 
+            // 1. Custom zero-buffer load control
+            val loadControl = createZeroBufferLoadControl()
 
-            // 1. Configure Low-Latency LoadControl
-            val loadControl: LoadControl = DefaultLoadControl.Builder()
-                .setBufferDurationsMs(
-                    5,   // minBufferMs
-                    5,   // maxBufferMs
-                    5,   // bufferForPlaybackMs
-                    5    // bufferForPlaybackAfterRebufferMs
-                )
-                .setPrioritizeTimeOverSizeThresholds(true)
-                .setBackBuffer(0, false)
-                .setTargetBufferBytes(-1)
-                .build()
-
-            // 2. Configure UdpDataSource with timeout (using the working approach)
+            // 2. Custom UDP data source
             val udpDataSourceFactory = DataSource.Factory {
-
-                UdpDataSource(50) // 50ms timeout
+                ZeroLatencyUdpDataSource(50) // 50ms timeout
             }
 
-            // 3. Build the ExoPlayer instance
+            // 3. Build player with minimal latency settings
             player = ExoPlayer.Builder(this)
                 .setLoadControl(loadControl)
                 .setRenderersFactory(
                     DefaultRenderersFactory(this)
-                        .setAllowedVideoJoiningTimeMs(0)  // Disable video joining delay
+                        .setAllowedVideoJoiningTimeMs(0)
+                        .setEnableDecoderFallback(true)
                 )
+                .setClock(Clock.DEFAULT) // Use system clock for timing
+                .setPriorityTaskManager(null) // No task prioritization
+                .setUseLazyPreparation(false) // Prepare immediately
+                .setSeekParameters(SeekParameters.EXACT) // No seek buffering
                 .build()
                 .also { exoPlayer ->
                     binding.playerView.player = exoPlayer
 
                     val port = extractPort(serverAddress)
-                    val uri = "udp://0.0.0.0:$port?pkt_size=1316" // Bind to all interfaces
+                    val uri = "udp://0.0.0.0:$port?pkt_size=1316"
                     val mediaItem = MediaItem.fromUri(uri)
 
-                    // 4. Create media source with low-latency error handling
                     val dataSourceFactory = DefaultDataSource.Factory(
                         this,
                         udpDataSourceFactory
                     )
 
                     val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
-                        .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(10))
+                        .setLoadErrorHandlingPolicy(object : DefaultLoadErrorHandlingPolicy() {
+                            override fun getRetryDelayMsFor(
+                                loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo
+                            ): Long {
+                                return 0 // No retry delay
+                            }
+                        })
                         .createMediaSource(mediaItem)
 
-                    exoPlayer.setMediaSource(mediaSource)
-                    exoPlayer.playWhenReady = playWhenReady
-                    exoPlayer.seekTo(currentItem, playbackPosition)
+                    exoPlayer.playWhenReady = true
+                    exoPlayer.repeatMode = Player.REPEAT_MODE_OFF
+                    exoPlayer.setMediaSource(mediaSource, true) // Reset position
                     exoPlayer.prepare()
 
                     // Error handling
@@ -110,24 +107,12 @@ class MainActivity : AppCompatActivity() {
                                 ).show()
                             }
                         }
-
-                        override fun onPlaybackStateChanged(state: Int) {
-                            if (state == Player.STATE_BUFFERING) {
-                                runOnUiThread {
-                                    Toast.makeText(
-                                        this@MainActivity,
-                                        "Buffering...",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            }
-                        }
                     })
                 }
 
             Toast.makeText(
                 this,
-                "Listening on UDP port ${extractPort(serverAddress)} (low-latency mode)",
+                "Listening on UDP port ${extractPort(serverAddress)} (zero-buffer mode)",
                 Toast.LENGTH_LONG
             ).show()
 
