@@ -1,6 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Stream Client</string>
-    <string name="server_ip_port_e_g_192_168_1_10_5000">Server IP:Port (e.g. 192.168.1.10:5000)</string>
     <string name="connect">Connect</string>
-    <string name="latency_stats_will_appear_here">Latency stats will appear here</string>
+    <string name="server_ip_port_e_g_192_168_1_10_5000">Server port (e.g. 5000)</string>
+    <string name="fullscreen">Fullscreen</string>
 </resources>
