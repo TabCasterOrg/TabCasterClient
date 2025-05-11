@@ -23,6 +23,14 @@ import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.ui.PlayerView
 import com.example.streamclient3.databinding.ActivityMainBinding
 import androidx.constraintlayout.widget.ConstraintLayout
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStream
+import java.net.Socket
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
 
@@ -32,6 +40,8 @@ class MainActivity : AppCompatActivity() {
     private var currentItem = 0
     private var playbackPosition = 0L
     private var isFullscreen = false
+    private var controlSocket: Socket? = null
+    private var controlThread: Thread? = null
     private val originalPlayerViewParams by lazy {
         binding.playerView.layoutParams as ConstraintLayout.LayoutParams
     }
@@ -49,6 +59,59 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupControlChannel(serverIp: String, width: Int, height: Int) {
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                // Extract IP and port (default control port 5000)
+                val ip = extractIp(serverIp)
+                val port = 5000 // Default control port
+
+                // Connect to server
+                controlSocket = Socket(ip, port)
+                val output: OutputStream = controlSocket!!.getOutputStream()
+                val input = BufferedReader(InputStreamReader(controlSocket!!.getInputStream()))
+
+                // Get device dimensions
+                val displayMetrics = resources.displayMetrics
+                val deviceWidth = displayMetrics.widthPixels
+                val deviceHeight = displayMetrics.heightPixels
+
+                // Create setup message
+                val message = JSONObject().apply {
+                    put("command", "setup")
+                    put("width", deviceWidth)
+                    put("height", deviceHeight)
+                    put("refresh_rate", 60.0)
+                    put("udp_port", extractPort(serverIp).toInt())
+                }
+
+                // Send to server
+                output.write(message.toString().toByteArray())
+                output.flush()
+
+                // Wait for response
+                val response = input.readLine()
+                val jsonResponse = JSONObject(response)
+
+                if (jsonResponse.getString("status") == "ready") {
+                    // Update the UDP target with the one provided by server
+                    runOnUiThread {
+                        binding.serverIpEditText.setText(jsonResponse.getString("udp_target"))
+                        initializePlayer() // Start streaming with the new UDP target
+                    }
+                }
+
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Control channel error: ${e.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
     private fun toggleFullscreen() {
         if (isFullscreen) {
             exitFullscreen()
@@ -114,6 +177,13 @@ class MainActivity : AppCompatActivity() {
 
         if (serverAddress.isEmpty()) {
             Toast.makeText(this, "Please enter server IP and port", Toast.LENGTH_SHORT).show()
+            return
+        }
+        // Check if we should use automatic setup
+        if (serverAddress.contains(":") && serverAddress.split(":").size == 2) {
+            // This is just IP:port format - use automatic setup
+            val displayMetrics = resources.displayMetrics
+            setupControlChannel(serverAddress, displayMetrics.widthPixels, displayMetrics.heightPixels)
             return
         }
 
@@ -201,8 +271,24 @@ class MainActivity : AppCompatActivity() {
                 Toast.LENGTH_LONG
             ).show()
         }
+
+    }
+    // Add cleanup for control channel
+    private fun releaseControlChannel() {
+        controlThread?.interrupt()
+        try {
+            controlSocket?.close()
+        } catch (e: Exception) {
+            // Ignore
+        }
+        controlSocket = null
+        controlThread = null
     }
 
+    override fun onDestroy() {
+        releaseControlChannel()
+        super.onDestroy()
+    }
     private fun extractPort(serverAddress: String): String {
         return if (serverAddress.contains(":")) {
             serverAddress.split(":")[1].takeIf { it.isNotEmpty() } ?: "5001"
