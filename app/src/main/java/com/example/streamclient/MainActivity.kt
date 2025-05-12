@@ -29,10 +29,17 @@ import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.NetworkInterface
 import kotlin.concurrent.thread
+import androidx.media3.common.C
+import androidx.media3.common.Format
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime
+import androidx.media3.exoplayer.source.LoadEventInfo
+import androidx.media3.exoplayer.source.MediaLoadData
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+
     private var player: ExoPlayer? = null
     private var playWhenReady = true
     private var currentItem = 0
@@ -57,6 +64,8 @@ class MainActivity : AppCompatActivity() {
 
         // Enable fullscreen button in PlayerView
         binding.playerView.setFullscreenButtonClickListener { toggleFullscreen() }
+
+        binding.playerView.keepScreenOn = true // keep screen on
 
         binding.connectButton.setOnClickListener {
             val serverAddress = binding.serverIpEditText.text.toString().trim()
@@ -273,10 +282,9 @@ class MainActivity : AppCompatActivity() {
             Log.d(TAG, "Initializing player for UDP stream")
 
             val loadControl: LoadControl = DefaultLoadControl.Builder()
-                .setBufferDurationsMs(5, 5, 5, 5)
+                .setBufferDurationsMs(1, 1, 1, 1)
                 .setPrioritizeTimeOverSizeThresholds(true)
-                .setBackBuffer(0, false)
-                .setTargetBufferBytes(-1)
+                .setBackBuffer(1, false)
                 .build()
 
             val udpDataSourceFactory = DataSource.Factory {
@@ -316,6 +324,38 @@ class MainActivity : AppCompatActivity() {
                     exoPlayer.playWhenReady = playWhenReady
                     exoPlayer.seekTo(currentItem, playbackPosition)
                     exoPlayer.prepare()
+                    exoPlayer.setWakeMode(C.WAKE_MODE_LOCAL) //Screen On
+                    exoPlayer.setWakeMode(C.WAKE_MODE_NETWORK) // Keeps network active too
+                    exoPlayer.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING)
+
+                    exoPlayer.addAnalyticsListener(object : AnalyticsListener {
+                        fun onVideoInputFormatChanged(
+                            eventTime: EventTime,
+                            format: Format,
+                            trackType: Int
+                        ) {
+                            if (trackType == C.TRACK_TYPE_VIDEO) {
+                                Log.d("UDPStream", "Bitrate changed: ${format.bitrate}bps")
+                                // Monitor sudden bitrate drops = potential network issues
+                            }
+                        }
+
+                        override fun onDroppedVideoFrames(
+                            eventTime: EventTime,
+                            droppedFrames: Int,
+                            elapsedMs: Long
+                        ) {
+                            Log.w("UDPStream", "Dropped $droppedFrames frames in $elapsedMs ms") // UDP packet loss indicator
+                        }
+
+                        override fun onLoadStarted(
+                            eventTime: EventTime,
+                            loadEventInfo: LoadEventInfo,
+                            mediaLoadData: MediaLoadData
+                        ) {
+                            Log.d("UDPStream", "Buffer refill started") // Track rebuffering events
+                        }
+                    })
 
                     exoPlayer.addListener(object : Player.Listener {
                         override fun onPlayerError(error: PlaybackException) {
