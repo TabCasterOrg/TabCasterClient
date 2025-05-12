@@ -2,11 +2,13 @@ package com.example.streamclient3
 
 import android.content.pm.ActivityInfo
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import android.view.View
-import android.view.WindowInsets
-import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -20,17 +22,13 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
-import androidx.media3.ui.PlayerView
 import com.example.streamclient3.databinding.ActivityMainBinding
-import androidx.constraintlayout.widget.ConstraintLayout
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.io.OutputStream
-import java.net.Socket
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
-import org.json.JSONObject
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.Inet4Address
+import java.net.InetAddress
+import java.net.NetworkInterface
+import kotlin.concurrent.thread
 
 class MainActivity : AppCompatActivity() {
 
@@ -40,11 +38,18 @@ class MainActivity : AppCompatActivity() {
     private var currentItem = 0
     private var playbackPosition = 0L
     private var isFullscreen = false
-    private var controlSocket: Socket? = null
-    private var controlThread: Thread? = null
     private val originalPlayerViewParams by lazy {
         binding.playerView.layoutParams as ConstraintLayout.LayoutParams
     }
+    private val handler = Handler(Looper.getMainLooper())
+
+    companion object {
+        private const val TAG = "StreamClient"
+        private const val DIMENSION_SEND_RETRIES = 3
+        private const val RETRY_DELAY_MS = 1000L
+        private const val PLAYER_INIT_DELAY_MS = 1500L
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -54,64 +59,66 @@ class MainActivity : AppCompatActivity() {
         binding.playerView.setFullscreenButtonClickListener { toggleFullscreen() }
 
         binding.connectButton.setOnClickListener {
+            val serverAddress = binding.serverIpEditText.text.toString().trim()
+            if (serverAddress.isEmpty()) {
+                Toast.makeText(this, "Please enter server IP and port", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            // First release any existing player
             releasePlayer()
-            initializePlayer()
+
+            // Show connecting status
+            Toast.makeText(this, "Connecting to server...", Toast.LENGTH_SHORT).show()
+
+            // Start connection process
+            startConnectionProcess(serverAddress)
         }
     }
 
-    private fun setupControlChannel(serverIp: String, width: Int, height: Int) {
-        GlobalScope.launch(Dispatchers.IO) {
-            try {
-                // Extract IP and port (default control port 5000)
-                val ip = extractIp(serverIp)
-                val port = 5000 // Default control port
+    private fun startConnectionProcess(serverAddress: String) {
+        // Run in background thread to avoid blocking UI
+        thread(start = true) {
+            Thread.sleep(500) //slight delay before sending dims
+            var success = false
 
-                // Connect to server
-                controlSocket = Socket(ip, port)
-                val output: OutputStream = controlSocket!!.getOutputStream()
-                val input = BufferedReader(InputStreamReader(controlSocket!!.getInputStream()))
+            // Try sending dimensions multiple times in case of failure
+            for (attempt in 1..DIMENSION_SEND_RETRIES) {
+                Log.d(TAG, "Sending dimensions, attempt $attempt")
+                success = sendScreenDimensions(serverAddress)
 
-                // Get device dimensions
-                val displayMetrics = resources.displayMetrics
-                val deviceWidth = displayMetrics.widthPixels
-                val deviceHeight = displayMetrics.heightPixels
-
-                // Create setup message
-                val message = JSONObject().apply {
-                    put("command", "setup")
-                    put("width", deviceWidth)
-                    put("height", deviceHeight)
-                    put("refresh_rate", 60.0)
-                    put("udp_port", extractPort(serverIp).toInt())
-                }
-
-                // Send to server
-                output.write(message.toString().toByteArray())
-                output.flush()
-
-                // Wait for response
-                val response = input.readLine()
-                val jsonResponse = JSONObject(response)
-
-                if (jsonResponse.getString("status") == "ready") {
-                    // Update the UDP target with the one provided by server
-                    runOnUiThread {
-                        binding.serverIpEditText.setText(jsonResponse.getString("udp_target"))
-                        initializePlayer() // Start streaming with the new UDP target
+                if (success) {
+                    Log.d(TAG, "Successfully sent dimensions to server")
+                    break
+                } else {
+                    if (attempt < DIMENSION_SEND_RETRIES) {
+                        Log.d(TAG, "Failed to send dimensions, retrying in ${RETRY_DELAY_MS}ms")
+                        Thread.sleep(RETRY_DELAY_MS)
                     }
                 }
+            }
 
-            } catch (e: Exception) {
+            // Now initialize the player after a short delay to give server time to start streaming
+            if (success) {
                 runOnUiThread {
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Control channel error: ${e.message}",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    Toast.makeText(this, "Dimensions sent, preparing player...", Toast.LENGTH_SHORT).show()
+                }
+
+                // Wait a moment for server to start streaming
+                Thread.sleep(PLAYER_INIT_DELAY_MS)
+
+                // Initialize player on UI thread
+                runOnUiThread {
+                    initializePlayer(serverAddress)
+                }
+            } else {
+                runOnUiThread {
+                    Toast.makeText(this, "Failed to connect to server", Toast.LENGTH_LONG).show()
                 }
             }
         }
     }
+
     private fun toggleFullscreen() {
         if (isFullscreen) {
             exitFullscreen()
@@ -172,23 +179,98 @@ class MainActivity : AppCompatActivity() {
         isFullscreen = false
     }
 
-    private fun initializePlayer() {
-        val serverAddress = binding.serverIpEditText.text.toString().trim()
+    // Send screen dimensions for xrandr
+    private fun sendScreenDimensions(serverAddress: String): Boolean {
+        return try {
+            val socket = DatagramSocket()
+            val serverIp = extractIp(serverAddress)
+            val port = extractPort(serverAddress).toInt()
 
-        if (serverAddress.isEmpty()) {
-            Toast.makeText(this, "Please enter server IP and port", Toast.LENGTH_SHORT).show()
-            return
-        }
-        // Check if we should use automatic setup
-        if (serverAddress.contains(":") && serverAddress.split(":").size == 2) {
-            // This is just IP:port format - use automatic setup
+            // Get screen dimensions
             val displayMetrics = resources.displayMetrics
-            setupControlChannel(serverAddress, displayMetrics.widthPixels, displayMetrics.heightPixels)
-            return
+            val width = displayMetrics.widthPixels
+            val height = displayMetrics.heightPixels
+
+            // Get client's IP address (to help server send back to right address)
+            val localIp = getLocalIpAddress()
+
+            // Create dimension packet: "DIMS:width:height:clientIP"
+            val message = "DIMS:$width:$height:$localIp"
+            val buffer = message.toByteArray()
+
+            // Check if we're using a proper IP or broadcast
+            if (serverIp == "0.0.0.0" || serverIp.endsWith(".255")) {
+                Log.d(TAG, "Using broadcast address or wildcard, trying direct send to server")
+                // Try to find a better server address if available
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        "Using broadcast to find server at port $port",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+
+            // Enable broadcast if needed
+            socket.broadcast = true
+
+            val packet = DatagramPacket(
+                buffer,
+                buffer.size,
+                InetAddress.getByName(serverIp),
+                port
+            )
+
+            socket.send(packet)
+
+            // Send a second packet to 255.255.255.255 to ensure broadcast works
+            if (serverIp != "255.255.255.255") {
+                val broadcastPacket = DatagramPacket(
+                    buffer,
+                    buffer.size,
+                    InetAddress.getByName("255.255.255.255"),
+                    port
+                )
+                socket.send(broadcastPacket)
+                Log.d(TAG, "Also sent broadcast dimensions to 255.255.255.255:$port")
+            }
+
+            socket.close()
+
+            Log.d(TAG, "Sent dimensions: $width x $height to $serverIp:$port from $localIp")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send dimensions: ${e.message}")
+            false
+        }
+    }
+
+    // Helper method to get device's local IP
+    private fun getLocalIpAddress(): String {
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val networkInterface = interfaces.nextElement()
+                val addresses = networkInterface.inetAddresses
+
+                while (addresses.hasMoreElements()) {
+                    val address = addresses.nextElement()
+                    // Filter for IPv4 addresses that aren't loopback
+                    if (!address.isLoopbackAddress && address is Inet4Address) {
+                        return address.hostAddress
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting local IP: ${e.message}")
         }
 
+        return "127.0.0.1" // Fallback to localhost
+    }
+
+    private fun initializePlayer(serverAddress: String) {
         try {
-            releasePlayer()
+            Log.d(TAG, "Initializing player for UDP stream")
 
             val loadControl: LoadControl = DefaultLoadControl.Builder()
                 .setBufferDurationsMs(5, 5, 5, 5)
@@ -217,6 +299,8 @@ class MainActivity : AppCompatActivity() {
 
                     val port = extractPort(serverAddress)
                     val uri = "udp://0.0.0.0:$port?pkt_size=1316"
+                    Log.d(TAG, "Setting up player with URI: $uri")
+
                     val mediaItem = MediaItem.fromUri(uri)
 
                     val dataSourceFactory = DefaultDataSource.Factory(
@@ -235,6 +319,7 @@ class MainActivity : AppCompatActivity() {
 
                     exoPlayer.addListener(object : Player.Listener {
                         override fun onPlayerError(error: PlaybackException) {
+                            Log.e(TAG, "Player error: ${error.errorCodeName} - ${error.message}")
                             runOnUiThread {
                                 Toast.makeText(
                                     this@MainActivity,
@@ -245,11 +330,28 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         override fun onPlaybackStateChanged(state: Int) {
+                            val stateStr = when(state) {
+                                Player.STATE_IDLE -> "IDLE"
+                                Player.STATE_BUFFERING -> "BUFFERING"
+                                Player.STATE_READY -> "READY"
+                                Player.STATE_ENDED -> "ENDED"
+                                else -> "UNKNOWN"
+                            }
+                            Log.d(TAG, "Player state changed to: $stateStr")
+
                             if (state == Player.STATE_BUFFERING) {
                                 runOnUiThread {
                                     Toast.makeText(
                                         this@MainActivity,
                                         "Buffering...",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            } else if (state == Player.STATE_READY) {
+                                runOnUiThread {
+                                    Toast.makeText(
+                                        this@MainActivity,
+                                        "Stream ready",
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 }
@@ -265,48 +367,39 @@ class MainActivity : AppCompatActivity() {
             ).show()
 
         } catch (e: Exception) {
+            Log.e(TAG, "Player initialization failed", e)
             Toast.makeText(
                 this,
                 "Initialization failed: ${e.message}",
                 Toast.LENGTH_LONG
             ).show()
         }
-
-    }
-    // Add cleanup for control channel
-    private fun releaseControlChannel() {
-        controlThread?.interrupt()
-        try {
-            controlSocket?.close()
-        } catch (e: Exception) {
-            // Ignore
-        }
-        controlSocket = null
-        controlThread = null
     }
 
-    override fun onDestroy() {
-        releaseControlChannel()
-        super.onDestroy()
-    }
-    private fun extractPort(serverAddress: String): String {
-        return if (serverAddress.contains(":")) {
-            serverAddress.split(":")[1].takeIf { it.isNotEmpty() } ?: "5001"
-        } else {
-            "5001"
+    private fun extractPort(input: String): String {
+        // If input contains a colon, it's in IP:port format (legacy support)
+        if (input.contains(":")) {
+            return input.split(":")[1].takeIf { it.isNotEmpty() } ?: "5001"
         }
+        // Otherwise, just use the input as port
+        return input.takeIf { it.isNotEmpty() } ?: "5001"
     }
 
     private fun extractIp(serverAddress: String): String {
-        return if (serverAddress.contains(":")) {
+        val ip = if (serverAddress.contains(":")) {
             serverAddress.split(":")[0].takeIf { it.isNotEmpty() } ?: "0.0.0.0"
         } else {
             "0.0.0.0"
         }
+
+        // Log the extracted IP for debugging
+        Log.d(TAG, "Extracted server IP: $ip from input: $serverAddress")
+        return ip
     }
 
     private fun releasePlayer() {
         player?.let { exoPlayer ->
+            Log.d(TAG, "Releasing player")
             playbackPosition = exoPlayer.currentPosition
             currentItem = exoPlayer.currentMediaItemIndex
             playWhenReady = exoPlayer.playWhenReady
@@ -317,16 +410,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        if (Util.SDK_INT > 23) {
-            initializePlayer()
-        }
+        // Don't auto-initialize on start, let user press connect button
     }
 
     override fun onResume() {
         super.onResume()
-        if (Util.SDK_INT <= 23 || player == null) {
-            initializePlayer()
-        }
+        // Don't auto-initialize on resume, let user press connect button
     }
 
     override fun onPause() {
