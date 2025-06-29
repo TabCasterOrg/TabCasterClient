@@ -42,7 +42,6 @@ dependencies {
     implementation(libs.androidx.appcompat) // update
     implementation(libs.material) // update
     implementation(libs.androidx.constraintlayout) // update
-
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.common)
