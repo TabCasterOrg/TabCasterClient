@@ -1,108 +1,29 @@
 package com.example.streamclient3
 
-import android.app.AlertDialog
 import android.content.pm.ActivityInfo
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.view.View
+import android.widget.ArrayAdapter
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
-import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.common.util.Util
-import androidx.media3.datasource.DataSource
-import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.UdpDataSource
-import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.DefaultRenderersFactory
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.LoadControl
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import com.example.streamclient3.databinding.ActivityMainBinding
-import java.net.DatagramPacket
-import java.net.DatagramSocket
-import java.net.Inet4Address
-import java.net.InetAddress
-import java.net.NetworkInterface
-import kotlin.concurrent.thread
-import androidx.media3.common.C
-import androidx.media3.common.Format
-import androidx.media3.exoplayer.analytics.AnalyticsListener
-import androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime
-import androidx.media3.exoplayer.source.LoadEventInfo
-import androidx.media3.exoplayer.source.MediaLoadData
-import androidx.media3.datasource.DataSpec
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.TransferListener
-import java.io.IOException
 
-@UnstableApi
-class RobustUdpDataSource(private val socketTimeoutMs: Int) : DataSource {
-    private val udpDataSource = UdpDataSource(socketTimeoutMs)
-    private var lastSuccessfulReadTime = 0L
-    private var dataSpec: DataSpec? = null
-
-    override fun open(dataSpec: DataSpec): Long {
-        this.dataSpec = dataSpec
-        lastSuccessfulReadTime = System.currentTimeMillis()
-        return udpDataSource.open(dataSpec)
-    }
-
-    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
-        try {
-            val bytesRead = udpDataSource.read(buffer, offset, length)
-            lastSuccessfulReadTime = System.currentTimeMillis()
-            return bytesRead
-        } catch (e: IOException) {
-            if (System.currentTimeMillis() - lastSuccessfulReadTime > 5000) {
-                close()
-                dataSpec?.let { open(it) }
-            }
-            throw e
-        }
-    }
-
-    override fun getUri() = udpDataSource.uri
-    override fun close() = udpDataSource.close()
-    override fun addTransferListener(transferListener: TransferListener) {
-        udpDataSource.addTransferListener(transferListener)
-    }
-}
-
-class MainActivity : AppCompatActivity(), ServiceDiscoveryManager.ServiceDiscoveryCallback {
+class MainActivity : AppCompatActivity(),
+    NetworkDiscovery.DiscoveryCallback,
+    StreamPlayer.StreamCallback {
 
     private lateinit var binding: ActivityMainBinding
+    private lateinit var networkDiscovery: NetworkDiscovery
+    private lateinit var streamPlayer: StreamPlayer
 
-    private var player: ExoPlayer? = null
-    private var playWhenReady = true
-    private var currentItem = 0
-    private var playbackPosition = 0L
+    private var isStreaming = false
     private var isFullscreen = false
-    private val originalPlayerViewParams by lazy {
-        binding.playerView.layoutParams as ConstraintLayout.LayoutParams
-    }
-    private val handler = Handler(Looper.getMainLooper())
-
-    // Service Discovery
-    private lateinit var serviceDiscovery: ServiceDiscoveryManager
-    private var currentServer: ServiceDiscoveryManager.ServerInfo? = null
-    private var connectionMode = ConnectionMode.AUTO
-
-    enum class ConnectionMode {
-        AUTO,   // Use service discovery
-        MANUAL  // Manual IP:port entry
-    }
 
     companion object {
         private const val TAG = "StreamClient"
-        private const val DIMENSION_SEND_RETRIES = 3
-        private const val RETRY_DELAY_MS = 1000L
-        private const val PLAYER_INIT_DELAY_MS = 1500L
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -110,490 +31,229 @@ class MainActivity : AppCompatActivity(), ServiceDiscoveryManager.ServiceDiscove
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Initialize service discovery
-        serviceDiscovery = ServiceDiscoveryManager(this, this)
+        // Initialize components
+        networkDiscovery = NetworkDiscovery(this, this)
+        streamPlayer = StreamPlayer(this).apply {
+            setCallback(this@MainActivity)
+        }
 
-        // Setup UI
+        setupUI()
         setupPlayerView()
-        setupButtons()
 
-        // Start service discovery
-        serviceDiscovery.start()
-        updateStatus("Starting service discovery...")
+        // Start discovery
+        networkDiscovery.start()
+    }
+
+    private fun setupUI() {
+        binding.connectButton.setOnClickListener {
+            handleConnection()
+        }
+
+        binding.serversButton.setOnClickListener {
+            showServerSelectionDialog()
+        }
+
+        binding.disconnectButton.setOnClickListener {
+            disconnect()
+        }
+
+        // Initially hide disconnect button
+        binding.disconnectButton.visibility = View.GONE
     }
 
     private fun setupPlayerView() {
-        binding.playerView.setFullscreenButtonClickListener { toggleFullscreen() }
-        binding.playerView.keepScreenOn = true
+        // Replace the existing player view with our optimized one
+        val playerView = streamPlayer.initializePlayerView()
+
+        // Add player view to the container
+        binding.playerContainer.removeAllViews()
+        binding.playerContainer.addView(playerView,
+            ConstraintLayout.LayoutParams(
+                ConstraintLayout.LayoutParams.MATCH_PARENT,
+                ConstraintLayout.LayoutParams.MATCH_PARENT
+            )
+        )
     }
 
-    private fun setupButtons() {
-        binding.connectButton.setOnClickListener {
-            val serverInput = binding.serverIpEditText.text.toString().trim()
+    private fun handleConnection() {
+        val manualInput = binding.serverInput.text.toString().trim()
 
-            when {
-                serverInput.isEmpty() -> {
-                    // Auto-discovery mode
-                    handleAutoConnection()
-                }
-                else -> {
-                    // Manual connection mode
-                    handleManualConnection(serverInput)
-                }
-            }
-        }
-
-        // Long press for server selection dialog
-        binding.connectButton.setOnLongClickListener {
-            showServerSelectionDialog()
-            true
-        }
-    }
-
-    private fun handleAutoConnection() {
-        connectionMode = ConnectionMode.AUTO
-
-        if (serviceDiscovery.hasServers()) {
-            val newestServer = serviceDiscovery.getNewestServer()
-            if (newestServer != null) {
-                connectToDiscoveredServer(newestServer)
-            } else {
-                updateStatus("No servers available")
-            }
+        if (manualInput.isNotEmpty()) {
+            // Manual connection
+            connect(manualInput)
         } else {
+            // Show discovered servers
             showServerSelectionDialog()
         }
-    }
-
-    private fun handleManualConnection(serverAddress: String) {
-        connectionMode = ConnectionMode.MANUAL
-        currentServer = null // Clear any auto-discovered server
-        startConnectionProcess(serverAddress)
     }
 
     private fun showServerSelectionDialog() {
-        val servers = serviceDiscovery.getDiscoveredServers()
+        val servers = networkDiscovery.getServers()
 
         if (servers.isEmpty()) {
-            Toast.makeText(this, "No servers discovered yet. Try manual IP:port or wait for discovery.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "No servers found. Enter IP:port manually.", Toast.LENGTH_SHORT).show()
             return
         }
 
-        val serverList = servers.values.toList().sortedByDescending { it.discoveredAt }
-        val serverNames = serverList.map {
-            "${it.name}\n${it.address}:${it.port}\n${it.width}x${it.height}@${it.framerate}fps"
+        val serverNames = servers.map { server ->
+            // Format: "ServerName@192.168.1.100:5001" -> "ServerName (192.168.1.100:5001)"
+            if (server.contains("@")) {
+                val parts = server.split("@")
+                "${parts[0]} (${parts[1]})"
+            } else {
+                server
+            }
         }.toTypedArray()
 
         AlertDialog.Builder(this)
-            .setTitle("Select Server (${serverList.size} available)")
+            .setTitle("Select Server (${servers.size} found)")
             .setItems(serverNames) { _, which ->
-                val selectedServer = serverList[which]
-                connectToDiscoveredServer(selectedServer)
+                connect(servers[which])
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
-    private fun connectToDiscoveredServer(serverInfo: ServiceDiscoveryManager.ServerInfo) {
-        currentServer = serverInfo
-        connectionMode = ConnectionMode.AUTO
+    private fun connect(serverAddress: String) {
+        Log.d(TAG, "Connecting to: $serverAddress")
+        binding.statusText.text = "Connecting..."
 
-        updateStatus("Connecting to ${serverInfo.name}...")
-        Log.i(TAG, "Auto-connecting to: $serverInfo")
-
-        // For auto-discovered servers, skip dimension sending since
-        // server already knows about us via NSD
-        releasePlayer()
-
-        handler.postDelayed({
-            val serverAddress = "${serverInfo.address}:${serverInfo.port}"
-            initializePlayer(serverAddress)
-        }, 500)
+        streamPlayer.connect(serverAddress)
     }
 
-    private fun startConnectionProcess(serverAddress: String) {
-        updateStatus("Connecting to $serverAddress...")
-        Log.i(TAG, "Manual connection to: $serverAddress")
-
-        releasePlayer()
-
-        // For manual connections, send dimensions first
-        thread(start = true) {
-            Thread.sleep(500)
-            var success = false
-
-            for (attempt in 1..DIMENSION_SEND_RETRIES) {
-                Log.d(TAG, "Sending dimensions, attempt $attempt")
-                success = sendScreenDimensions(serverAddress)
-
-                if (success) {
-                    Log.d(TAG, "Successfully sent dimensions to server")
-                    break
-                } else {
-                    if (attempt < DIMENSION_SEND_RETRIES) {
-                        Log.d(TAG, "Failed to send dimensions, retrying in ${RETRY_DELAY_MS}ms")
-                        Thread.sleep(RETRY_DELAY_MS)
-                    }
-                }
-            }
-
-            if (success) {
-                runOnUiThread {
-                    updateStatus("Dimensions sent, preparing player...")
-                }
-
-                Thread.sleep(PLAYER_INIT_DELAY_MS)
-
-                runOnUiThread {
-                    initializePlayer(serverAddress)
-                }
-            } else {
-                runOnUiThread {
-                    updateStatus("Failed to connect to server")
-                }
-            }
-        }
-    }
-
-    private fun updateStatus(message: String) {
-        Log.d(TAG, message)
-        runOnUiThread {
-            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    // Service Discovery Callbacks
-    override fun onServerDiscovered(serverInfo: ServiceDiscoveryManager.ServerInfo) {
-        handler.post {
-            updateStatus("Found server: ${serverInfo.name}")
-
-            // Auto-connect to first server if none connected and in auto mode
-            if (currentServer == null &&
-                connectionMode == ConnectionMode.AUTO &&
-                binding.serverIpEditText.text.toString().trim().isEmpty()) {
-                connectToDiscoveredServer(serverInfo)
-            }
-        }
-    }
-
-    override fun onServerLost(serverName: String) {
-        handler.post {
-            updateStatus("Server lost: $serverName")
-
-            // If we lose our current server, try to reconnect to another
-            if (currentServer?.name == serverName && connectionMode == ConnectionMode.AUTO) {
-                currentServer = null
-                val newestServer = serviceDiscovery.getNewestServer()
-                if (newestServer != null && newestServer.name != serverName) {
-                    connectToDiscoveredServer(newestServer)
-                } else {
-                    releasePlayer()
-                    updateStatus("No servers available")
-                }
-            }
-        }
-    }
-
-    override fun onServiceRegistered(serviceName: String) {
-        handler.post {
-            updateStatus("NSD ready - Service: $serviceName")
-        }
-    }
-
-    override fun onError(error: String) {
-        handler.post {
-            updateStatus("NSD Error: $error")
-        }
-    }
-
-    override fun onLog(message: String) {
-        Log.d(TAG, "NSD: $message")
-    }
-
-    // Player and streaming code (unchanged from your original)
-    private fun toggleFullscreen() {
-        if (isFullscreen) {
-            exitFullscreen()
-        } else {
-            enterFullscreen()
-        }
+    private fun disconnect() {
+        Log.d(TAG, "Disconnecting from stream")
+        streamPlayer.release()
+        exitFullscreen()
+        updateUIForDisconnected()
     }
 
     private fun enterFullscreen() {
+        if (isFullscreen) return
+
+        // Hide system UI
         window.decorView.systemUiVisibility = (
                 View.SYSTEM_UI_FLAG_FULLSCREEN
                         or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                         or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                 )
 
-        supportActionBar?.hide()
+        // Force landscape orientation
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
 
-        val params = ConstraintLayout.LayoutParams(
-            ConstraintLayout.LayoutParams.MATCH_PARENT,
-            ConstraintLayout.LayoutParams.MATCH_PARENT
-        )
-        params.topToTop = ConstraintLayout.LayoutParams.PARENT_ID
-        params.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
-        params.startToStart = ConstraintLayout.LayoutParams.PARENT_ID
-        params.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
-        binding.playerView.layoutParams = params
+        // Hide action bar
+        supportActionBar?.hide()
 
-        binding.serverIpEditText.visibility = View.GONE
-        binding.connectButton.visibility = View.GONE
+        // Hide UI controls
+        binding.controlsLayout.visibility = View.GONE
 
         isFullscreen = true
+        Log.d(TAG, "Entered fullscreen landscape mode")
     }
 
     private fun exitFullscreen() {
+        if (!isFullscreen) return
+
+        // Restore system UI
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
-        supportActionBar?.show()
+
+        // Return to portrait
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        binding.playerView.layoutParams = originalPlayerViewParams
-        binding.serverIpEditText.visibility = View.VISIBLE
-        binding.connectButton.visibility = View.VISIBLE
+
+        // Show action bar
+        supportActionBar?.show()
+
+        // Show UI controls
+        binding.controlsLayout.visibility = View.VISIBLE
+
         isFullscreen = false
+        isStreaming = false
+        Log.d(TAG, "Exited fullscreen mode")
     }
 
-    private fun sendScreenDimensions(serverAddress: String): Boolean {
-        return try {
-            val socket = DatagramSocket()
-            val serverIp = extractIp(serverAddress)
-            val port = extractPort(serverAddress).toInt()
+    private fun updateUIForConnected() {
+        binding.statusText.text = "Connected - Ultra Low Latency"
+        binding.connectButton.visibility = View.GONE
+        binding.serversButton.visibility = View.GONE
+        binding.disconnectButton.visibility = View.VISIBLE
+        isStreaming = true
+    }
 
-            val displayMetrics = resources.displayMetrics
-            val width = displayMetrics.widthPixels
-            val height = displayMetrics.heightPixels
-            val localIp = getLocalIpAddress()
+    private fun updateUIForDisconnected() {
+        binding.statusText.text = "Ready to connect"
+        binding.connectButton.visibility = View.VISIBLE
+        binding.serversButton.visibility = View.VISIBLE
+        binding.disconnectButton.visibility = View.GONE
+        isStreaming = false
+    }
 
-            val message = "DIMS:$width:$height:$localIp"
-            val buffer = message.toByteArray()
-
-            socket.broadcast = true
-
-            val packet = DatagramPacket(
-                buffer,
-                buffer.size,
-                InetAddress.getByName(serverIp),
-                port
-            )
-
-            socket.send(packet)
-
-            // Also send broadcast if not already broadcasting
-            if (serverIp != "255.255.255.255") {
-                val broadcastPacket = DatagramPacket(
-                    buffer,
-                    buffer.size,
-                    InetAddress.getByName("255.255.255.255"),
-                    port
-                )
-                socket.send(broadcastPacket)
+    // NetworkDiscovery.DiscoveryCallback
+    override fun onServerFound(serverAddress: String) {
+        runOnUiThread {
+            val serverName = if (serverAddress.contains("@")) {
+                serverAddress.split("@")[0]
+            } else {
+                "Server"
             }
-
-            socket.close()
-            Log.d(TAG, "Sent dimensions: $width x $height to $serverIp:$port from $localIp")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to send dimensions: ${e.message}")
-            false
+            binding.statusText.text = "Found: $serverName"
         }
     }
 
-    private fun getLocalIpAddress(): String {
-        try {
-            val interfaces = NetworkInterface.getNetworkInterfaces()
-            while (interfaces.hasMoreElements()) {
-                val networkInterface = interfaces.nextElement()
-                val addresses = networkInterface.inetAddresses
-
-                while (addresses.hasMoreElements()) {
-                    val address = addresses.nextElement()
-                    if (!address.isLoopbackAddress && address is Inet4Address) {
-                        return address.hostAddress
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting local IP: ${e.message}")
-        }
-        return "127.0.0.1"
-    }
-
-    private fun initializePlayer(serverAddress: String) {
-        try {
-            Log.d(TAG, "Initializing player for UDP stream")
-
-            val loadControl: LoadControl = DefaultLoadControl.Builder()
-                .setBufferDurationsMs(1, 1, 1, 1)
-                .setPrioritizeTimeOverSizeThresholds(true)
-                .setBackBuffer(1, false)
-                .build()
-
-            val udpDataSourceFactory = DataSource.Factory {
-                RobustUdpDataSource(1000)
-            }
-
-            player = ExoPlayer.Builder(this)
-                .setLoadControl(loadControl)
-                .setRenderersFactory(
-                    DefaultRenderersFactory(this)
-                        .setAllowedVideoJoiningTimeMs(0)
-                )
-                .build()
-                .also { exoPlayer ->
-                    binding.playerView.player = exoPlayer
-                    binding.playerView.setShowNextButton(false)
-                    binding.playerView.setShowPreviousButton(false)
-                    binding.playerView.setShowFastForwardButton(false)
-                    binding.playerView.setShowRewindButton(false)
-
-                    val port = extractPort(serverAddress)
-                    val uri = "udp://0.0.0.0:$port"
-                    Log.d(TAG, "Setting up player with URI: $uri")
-
-                    val mediaItem = MediaItem.fromUri(uri)
-
-                    val dataSourceFactory = DefaultDataSource.Factory(
-                        this,
-                        udpDataSourceFactory
-                    )
-
-                    val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
-                        .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(10))
-                        .createMediaSource(mediaItem)
-
-                    exoPlayer.setMediaSource(mediaSource)
-                    exoPlayer.playWhenReady = playWhenReady
-                    exoPlayer.seekTo(currentItem, playbackPosition)
-                    exoPlayer.prepare()
-                    exoPlayer.setWakeMode(C.WAKE_MODE_LOCAL)
-                    exoPlayer.setWakeMode(C.WAKE_MODE_NETWORK)
-                    exoPlayer.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING)
-
-                    exoPlayer.addListener(object : Player.Listener {
-                        override fun onPlayerError(error: PlaybackException) {
-                            Log.e(TAG, "Player error: ${error.errorCodeName} - ${error.message}")
-                            runOnUiThread {
-                                Toast.makeText(
-                                    this@MainActivity,
-                                    "Player Error: ${error.errorCodeName}",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            }
-                        }
-
-                        override fun onPlaybackStateChanged(state: Int) {
-                            val stateStr = when(state) {
-                                Player.STATE_IDLE -> "IDLE"
-                                Player.STATE_BUFFERING -> "BUFFERING"
-                                Player.STATE_READY -> "READY"
-                                Player.STATE_ENDED -> "ENDED"
-                                else -> "UNKNOWN"
-                            }
-                            Log.d(TAG, "Player state: $stateStr")
-
-                            when (state) {
-                                Player.STATE_BUFFERING -> {
-                                    updateStatus("Buffering...")
-                                }
-                                Player.STATE_READY -> {
-                                    val connectionType = when (connectionMode) {
-                                        ConnectionMode.AUTO -> "auto-discovered"
-                                        ConnectionMode.MANUAL -> "manual"
-                                    }
-                                    val serverName = currentServer?.name ?: "server"
-                                    updateStatus("Stream ready from $serverName ($connectionType)")
-                                }
-                            }
-                        }
-                    })
-                }
-
-            val port = extractPort(serverAddress)
-            val connectionType = when (connectionMode) {
-                ConnectionMode.AUTO -> "auto-discovered"
-                ConnectionMode.MANUAL -> "manual"
-            }
-
-            Toast.makeText(
-                this,
-                "Listening on UDP port $port ($connectionType)",
-                Toast.LENGTH_LONG
-            ).show()
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Player initialization failed", e)
-            Toast.makeText(
-                this,
-                "Player init failed: ${e.message}",
-                Toast.LENGTH_LONG
-            ).show()
+    override fun onServerLost(serverName: String) {
+        runOnUiThread {
+            binding.statusText.text = "Lost: $serverName"
         }
     }
 
-    private fun extractPort(input: String): String {
-        return if (input.contains(":")) {
-            input.split(":")[1].takeIf { it.isNotEmpty() } ?: "5001"
-        } else {
-            input.takeIf { it.isNotEmpty() } ?: "5001"
+    // StreamPlayer.StreamCallback
+    override fun onStreamReady() {
+        runOnUiThread {
+            updateUIForConnected()
+            enterFullscreen() // Automatically enter fullscreen when stream starts
         }
     }
 
-    private fun extractIp(serverAddress: String): String {
-        val ip = if (serverAddress.contains(":")) {
-            serverAddress.split(":")[0].takeIf { it.isNotEmpty() } ?: "0.0.0.0"
-        } else {
-            "0.0.0.0"
+    override fun onStreamError(error: String) {
+        runOnUiThread {
+            binding.statusText.text = error
+            updateUIForDisconnected()
         }
-        Log.d(TAG, "Extracted server IP: $ip from input: $serverAddress")
-        return ip
     }
 
-    private fun releasePlayer() {
-        player?.let { exoPlayer ->
-            Log.d(TAG, "Releasing player")
-            playbackPosition = exoPlayer.currentPosition
-            currentItem = exoPlayer.currentMediaItemIndex
-            playWhenReady = exoPlayer.playWhenReady
-            exoPlayer.release()
-        }
-        player = null
-    }
-
-    override fun onStart() {
-        super.onStart()
-        // Player initialization is handled by connect button
+    override fun onStreamStateChanged(isPlaying: Boolean) {
+        // Handle any additional state changes if needed
     }
 
     override fun onResume() {
         super.onResume()
-        // Player initialization is handled by connect button
+        networkDiscovery.start()
     }
 
     override fun onPause() {
         super.onPause()
-        if (Util.SDK_INT <= 23) {
-            releasePlayer()
-        }
-    }
-
-    override fun onStop() {
-        super.onStop()
-        if (Util.SDK_INT > 23) {
-            releasePlayer()
+        if (!isStreaming) {
+            networkDiscovery.stop()
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        serviceDiscovery.cleanup()
-        releasePlayer()
+        networkDiscovery.stop()
+        streamPlayer.release()
+    }
+
+    override fun onBackPressed() {
+        if (isFullscreen) {
+            disconnect()
+        } else {
+            super.onBackPressed()
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus && isFullscreen) {
+            // Restore fullscreen mode if focus returns
             window.decorView.systemUiVisibility = (
                     View.SYSTEM_UI_FLAG_FULLSCREEN
                             or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
