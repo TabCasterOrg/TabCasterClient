@@ -15,6 +15,13 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
 
 @UnstableApi
 class StreamPlayer(private val context: Context) {
@@ -29,6 +36,10 @@ class StreamPlayer(private val context: Context) {
         private const val BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 50
         private const val TARGET_BUFFER_BYTES = -1     // No byte-based buffering
         private const val UDP_SOCKET_TIMEOUT_MS = 8000 // Socket timeout
+
+        // Connection settings
+        private const val CONNECTION_TIMEOUT_MS = 10000 // 10 seconds to wait for server response
+        private const val MAX_RETRIES = 3
     }
 
     private var player: ExoPlayer? = null
@@ -62,10 +73,101 @@ class StreamPlayer(private val context: Context) {
     fun connect(serverAddress: String) {
         release()
 
-        val port = parsePort(serverAddress)
+        val (serverIp, port) = parseServerAddress(serverAddress)
+
+        Log.d(TAG, "Connecting to server: $serverIp:$port")
+
+        // Send connection message to server in background
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val success = sendConnectionMessage(serverIp, port)
+
+                withContext(Dispatchers.Main) {
+                    if (success) {
+                        // Server acknowledged connection, start streaming
+                        startStreaming(port)
+                    } else {
+                        callback?.onStreamError("Failed to connect to server")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error connecting to server", e)
+                withContext(Dispatchers.Main) {
+                    callback?.onStreamError("Connection failed: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private suspend fun sendConnectionMessage(serverIp: String, port: Int): Boolean {
+        return withContext(Dispatchers.IO) {
+            var socket: DatagramSocket? = null
+            try {
+                socket = DatagramSocket()
+                socket.soTimeout = CONNECTION_TIMEOUT_MS
+
+                val serverAddress = InetAddress.getByName(serverIp)
+
+                // Get screen dimensions (or use default)
+                val displayMetrics = context.resources.displayMetrics
+                val width = displayMetrics.widthPixels
+                val height = displayMetrics.heightPixels
+                val framerate = 30 // Default framerate
+
+                // Create connection message
+                val message = "CONNECT:$width:$height:$framerate"
+                val messageBytes = message.toByteArray()
+
+                Log.d(TAG, "Sending connection message: $message")
+
+                // Send connection message
+                val packet = DatagramPacket(
+                    messageBytes,
+                    messageBytes.size,
+                    serverAddress,
+                    port
+                )
+                socket.send(packet)
+
+                // Wait for acknowledgment
+                val buffer = ByteArray(1024)
+                val responsePacket = DatagramPacket(buffer, buffer.size)
+
+                var retries = 0
+                while (retries < MAX_RETRIES) {
+                    try {
+                        socket.receive(responsePacket)
+                        val response = String(responsePacket.data, 0, responsePacket.length)
+                        Log.d(TAG, "Server response: $response")
+
+                        if (response.contains("ACK") || response.contains("SERVER_READY")) {
+                            Log.d(TAG, "Server acknowledged connection")
+                            return@withContext true
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Retry $retries failed: ${e.message}")
+                        retries++
+                        if (retries >= MAX_RETRIES) {
+                            Log.e(TAG, "Max retries exceeded")
+                            return@withContext false
+                        }
+                    }
+                }
+
+                false
+            } catch (e: Exception) {
+                Log.e(TAG, "Error sending connection message", e)
+                false
+            } finally {
+                socket?.close()
+            }
+        }
+    }
+
+    private fun startStreaming(port: Int) {
         val uri = "udp://0.0.0.0:$port"
 
-        Log.d(TAG, "Connecting to UDP stream on port $port")
+        Log.d(TAG, "Starting UDP stream on port $port")
 
         try {
             // Ultra low latency load control - aggressive settings for minimal buffering
@@ -122,6 +224,10 @@ class StreamPlayer(private val context: Context) {
                                 Player.STATE_BUFFERING -> {
                                     Log.d(TAG, "Buffering (minimal)")
                                 }
+                                Player.STATE_ENDED -> {
+                                    Log.d(TAG, "Stream ended")
+                                    callback?.onStreamError("Stream ended")
+                                }
                             }
 
                             val isPlaying = playbackState == Player.STATE_READY && playWhenReady
@@ -152,25 +258,32 @@ class StreamPlayer(private val context: Context) {
         return player?.isPlaying == true
     }
 
-    private fun parsePort(serverAddress: String): String {
+    private fun parseServerAddress(serverAddress: String): Pair<String, Int> {
         // Handle formats: "192.168.1.100:5001", "5001", "ServerName@192.168.1.100:5001"
         return when {
             serverAddress.contains("@") -> {
                 // Format: "ServerName@192.168.1.100:5001"
                 val addressPart = serverAddress.split("@")[1]
                 if (addressPart.contains(":")) {
-                    addressPart.split(":")[1]
-                } else "5001"
+                    val parts = addressPart.split(":")
+                    Pair(parts[0], parts[1].toInt())
+                } else {
+                    Pair(addressPart, 5001)
+                }
             }
             serverAddress.contains(":") -> {
                 // Format: "192.168.1.100:5001"
-                serverAddress.split(":")[1]
+                val parts = serverAddress.split(":")
+                Pair(parts[0], parts[1].toInt())
             }
             serverAddress.all { it.isDigit() } -> {
-                // Format: "5001"
-                serverAddress
+                // Format: "5001" - assume localhost
+                Pair("127.0.0.1", serverAddress.toInt())
             }
-            else -> "5001" // Default fallback
+            else -> {
+                // Assume it's an IP address without port
+                Pair(serverAddress, 5001)
+            }
         }
     }
 }
