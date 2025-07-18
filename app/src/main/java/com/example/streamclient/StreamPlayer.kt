@@ -74,7 +74,7 @@ class StreamPlayer(private val context: Context) {
         release()
 
         val (serverIp, port) = parseServerAddress(serverAddress)
-
+        val streamPort = port + 1  // Use next port for streaming
         Log.d(TAG, "Connecting to server: $serverIp:$port")
 
         // Send connection message to server in background
