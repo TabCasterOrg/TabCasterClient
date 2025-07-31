@@ -1,6 +1,8 @@
-# StreamClient3 - Android UDP Streaming Client
+# TabCaster Steam Client - Android UDP Streaming Client For TabCaster
 
 An open-source Android application for ultra-low latency screen streaming over UDP. The client automatically discovers streaming servers on the local network and provides a seamless fullscreen streaming experience.
+
+It is the companion application to TabCaster server. Both are required in order for you to use TabCaster.
 
 ## Table of Contents
 
@@ -57,7 +59,7 @@ dependencies {
 1. Clone the repository
 2. Open in Android Studio
 3. Add the required dependencies
-4. Add network permissions to `AndroidManifest.xml`:
+4. Add network permissions to `app/src/main/AndroidManifest.xml`:
 
 ```xml
 <uses-permission android:name="android.permission.INTERNET" />
