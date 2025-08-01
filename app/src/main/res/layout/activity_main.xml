@@ -41,13 +41,14 @@
             <!-- Server Input -->
             <com.google.android.material.textfield.TextInputLayout
                 style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-                android:layout_width="1000dp"
+                android:layout_width="900dp"
                 android:layout_height="wrap_content">
 
+                <!-- IP Input | Keep the 'match-parent' in. use the parent to adjust the size! -->
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/serverInput"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    android:layout_height="match_parent"
                     android:hint="IP:Port (optional)"
                     android:imeOptions="actionDone"
                     android:inputType="text" />
@@ -57,8 +58,8 @@
             <!-- Connect Button -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/connectButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_width="100dp"
+                android:layout_height="match_parent"
                 android:layout_marginStart="8dp"
                 android:layout_marginEnd="8dp"
                 android:layout_weight="1"
@@ -68,12 +69,23 @@
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/serversButton"
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_width="100dp"
+                android:layout_height="match_parent"
                 android:layout_marginStart="8dp"
                 android:layout_marginEnd="8dp"
                 android:layout_weight="1"
                 android:text="Servers" />
+
+            <!-- Hide Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/hideButton"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:text="v" />
 
             <!-- Disconnect Button (initially hidden) -->
             <com.google.android.material.button.MaterialButton
@@ -84,6 +96,8 @@
                 android:backgroundTint="#f44336"
                 android:text="Disconnect"
                 android:visibility="gone" />
+
+
         </LinearLayout>
     </LinearLayout>
 
