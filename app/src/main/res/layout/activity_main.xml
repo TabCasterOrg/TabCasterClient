@@ -8,6 +8,8 @@
     android:background="#000000"
     tools:context=".MainActivity">
 
+
+
     <!-- Player Container - Takes most of the screen -->
     <FrameLayout
         android:id="@+id/playerContainer"
@@ -25,65 +27,53 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp"
+        android:padding="6dp"
         android:background="#1a1a1a"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- Status Text -->
-        <TextView
-            android:id="@+id/statusText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Ready to connect"
-            android:textColor="#ffffff"
-            android:textSize="14sp"
-            android:gravity="center"
-            android:layout_marginBottom="12dp" />
-
-        <!-- Server Input -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="12dp"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/serverInput"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="IP:Port (optional)"
-                android:inputType="text"
-                android:imeOptions="actionDone" />
-
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <!-- Button Layout -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center">
+            android:layout_height="match_parent"
+            android:orientation="horizontal">
+
+            <!-- Server Input -->
+            <com.google.android.material.textfield.TextInputLayout
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_width="500dp"
+                android:layout_height="wrap_content">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/serverInput"
+                    android:layout_width="500dp"
+                    android:layout_height="wrap_content"
+                    android:hint="IP:Port (optional)"
+                    android:imeOptions="actionDone"
+                    android:inputType="text" />
+
+            </com.google.android.material.textfield.TextInputLayout>
 
             <!-- Connect Button -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/connectButton"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
                 android:layout_weight="1"
-                android:text="Connect"
-                android:layout_marginEnd="8dp" />
+                android:text="Connect" />
 
             <!-- Servers Button -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/serversButton"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
                 android:layout_weight="1"
-                android:text="Servers"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_marginStart="8dp" />
+                android:text="Servers" />
 
             <!-- Disconnect Button (initially hidden) -->
             <com.google.android.material.button.MaterialButton
@@ -91,12 +81,10 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="2"
-                android:text="Disconnect"
                 android:backgroundTint="#f44336"
+                android:text="Disconnect"
                 android:visibility="gone" />
-
         </LinearLayout>
-
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
