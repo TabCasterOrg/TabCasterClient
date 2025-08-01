@@ -116,7 +116,7 @@ class MainActivity : AppCompatActivity(),
 
     private fun connect(serverAddress: String) {
         Log.d(TAG, "Connecting to: $serverAddress")
-        binding.statusText.text = "Connecting..."
+        Toast.makeText(this, "Connecting to: $serverAddress", Toast.LENGTH_SHORT).show()
 
         streamPlayer.connect(serverAddress)
     }
@@ -172,7 +172,7 @@ class MainActivity : AppCompatActivity(),
     }
 
     private fun updateUIForConnected() {
-        binding.statusText.text = "Connected - Ultra Low Latency"
+        Toast.makeText(this, "Connected - Ultra Low Latency", Toast.LENGTH_SHORT).show()
         binding.connectButton.visibility = View.GONE
         binding.serversButton.visibility = View.GONE
         binding.disconnectButton.visibility = View.VISIBLE
@@ -180,7 +180,7 @@ class MainActivity : AppCompatActivity(),
     }
 
     private fun updateUIForDisconnected() {
-        binding.statusText.text = "Ready to connect"
+        Toast.makeText(this, "Ready to connect", Toast.LENGTH_SHORT).show()
         binding.connectButton.visibility = View.VISIBLE
         binding.serversButton.visibility = View.VISIBLE
         binding.disconnectButton.visibility = View.GONE
@@ -195,13 +195,13 @@ class MainActivity : AppCompatActivity(),
             } else {
                 "Server"
             }
-            binding.statusText.text = "Found: $serverName"
+            Toast.makeText(this, "Successfully discovered: $serverName", Toast.LENGTH_SHORT).show()
         }
     }
 
     override fun onServerLost(serverName: String) {
         runOnUiThread {
-            binding.statusText.text = "Lost: $serverName"
+            Toast.makeText(this, "Lost: $serverName", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -215,7 +215,7 @@ class MainActivity : AppCompatActivity(),
 
     override fun onStreamError(error: String) {
         runOnUiThread {
-            binding.statusText.text = error
+            Toast.makeText(this, "Encountered error with stream", Toast.LENGTH_SHORT).show()
             updateUIForDisconnected()
         }
     }
