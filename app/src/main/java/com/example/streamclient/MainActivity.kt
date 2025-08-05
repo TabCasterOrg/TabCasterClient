@@ -21,6 +21,7 @@ class MainActivity : AppCompatActivity(),
 
     private var isStreaming = false
     private var isFullscreen = false
+    private var uiIsVisible = true // The UI is to start visible, and then be collapsed by the user.
 
     companion object {
         private const val TAG = "StreamClient"
@@ -55,6 +56,10 @@ class MainActivity : AppCompatActivity(),
 
         binding.disconnectButton.setOnClickListener {
             disconnect()
+        }
+
+        binding.hideButton.setOnClickListener {
+
         }
 
         // Initially hide disconnect button
@@ -261,4 +266,25 @@ class MainActivity : AppCompatActivity(),
                     )
         }
     }
+
+    // For showing/hiding the UI
+    private fun toggleUIBar(){
+        uiIsVisible = !uiIsVisible
+        if (uiIsVisible){
+            showUIBar()
+        }
+        else {
+            hideUIBar()
+        }
+    }
+
+    private fun showUIBar(){
+
+    }
+
+    private fun hideUIBar(){
+
+    }
+
+
 }
