@@ -40,6 +40,7 @@ class StreamPlayer(private val context: Context) {
         // Connection settings
         private const val CONNECTION_TIMEOUT_MS = 10000 // 10 seconds to wait for server response
         private const val MAX_RETRIES = 3
+        private const val lowRes = false // This is for 480p mode. Whilst this is for testing, it could be used for a forced performance mode later on. The resolution should be the tablet's resolution.
     }
 
     private var player: ExoPlayer? = null
@@ -110,8 +111,8 @@ class StreamPlayer(private val context: Context) {
 
                 // Get screen dimensions (or use default)
                 val displayMetrics = context.resources.displayMetrics
-                val width = displayMetrics.widthPixels
-                val height = displayMetrics.heightPixels
+                val width = if (lowRes) 854 else displayMetrics.widthPixels
+                val height = if (lowRes) 480 else displayMetrics.heightPixels
                 val framerate = 30 // Default framerate
 
                 // Create connection message

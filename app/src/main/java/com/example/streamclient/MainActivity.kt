@@ -220,7 +220,7 @@ class MainActivity : AppCompatActivity(),
 
     override fun onStreamError(error: String) {
         runOnUiThread {
-            Toast.makeText(this, "Encountered error with stream", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Encountered error with stream: $error", Toast.LENGTH_SHORT).show()
             updateUIForDisconnected()
         }
     }
@@ -279,12 +279,10 @@ class MainActivity : AppCompatActivity(),
     }
 
     private fun showUIBar(){
-
+        Toast.makeText(this, "Showing UI Bar", Toast.LENGTH_SHORT).show()
     }
 
     private fun hideUIBar(){
-
+        Toast.makeText(this, "Hiding UI bar", Toast.LENGTH_SHORT).show()
     }
-
-
 }
