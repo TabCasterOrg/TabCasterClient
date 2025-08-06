@@ -42,12 +42,12 @@ class MainActivity : AppCompatActivity(),
         // If an IP Address is valid, show 'Connect'
         Log.d(TAG, "evaluateInput: input is $input")
         if (input != null && InetAddresses.isNumericAddress(input.toString())){
-            connectionButton.setBackgroundColor(1)
+            //connectionButton.setBackgroundColor(400)
             connectionButton.setText("Connect") // Change the text to connect when we have an IP address that we an connect to.
         }
         // if it isn't, show 'Help'
         else {
-            connectionButton.setBackgroundColor(0)
+            //connectionButton.setBackgroundColor(0)
             connectionButton.setText("Help") // If we do not have an IP address, show the 'help'text.
         }
         // TODO: "Update the drawable when a valid or nonvalid IP is entered
@@ -105,9 +105,7 @@ class MainActivity : AppCompatActivity(),
             }
 
         }
-        val servinputfound = findViewById<EditText>(R.id.serverInput)
-        Log.d(TAG, "setupUI: $servinputfound")
-        servinputfound.addTextChangedListener(serverTextWatcher) // You must do it via findviewbyid, since using the binding makes the application crash.
+        binding.serverInput.addTextChangedListener(serverTextWatcher)
 
 
 
