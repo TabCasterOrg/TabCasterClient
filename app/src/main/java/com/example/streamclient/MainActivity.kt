@@ -38,7 +38,7 @@ class MainActivity : AppCompatActivity(),
     // This is designed to grey out the connect button if the IP address is not valid. The user can still press the button to explain IP addresses.
     private fun evaluateInput(input : CharSequence?){
         // TODO: Make sure that the button updates to say help. Currently, this doesn't work. The debug messages do though.
-        var connectionButton = binding.serversButton
+        var connectionButton = binding.connectButton
         // If an IP Address is valid, show 'Connect'
         Log.d(TAG, "evaluateInput: input is $input")
         if (input != null && InetAddresses.isNumericAddress(input.toString())){
