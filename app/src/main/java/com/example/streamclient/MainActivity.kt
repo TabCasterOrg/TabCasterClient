@@ -85,28 +85,20 @@ class MainActivity : AppCompatActivity(),
         }
 
         // This is here to make the connection button update when a button is or isnt available. More responsive to the user.
-
         val serverTextWatcher : TextWatcher = object : TextWatcher {
-            override fun beforeTextChanged(p0: CharSequence?, p1: Int, p2: Int, p3: Int) {
-                return
-            }
+            override fun beforeTextChanged(p0: CharSequence?, p1: Int, p2: Int, p3: Int) { return }
 
             override fun onTextChanged(p0: CharSequence?, p1: Int, p2: Int, p3: Int) {
                 //Toast.makeText(this, p0, Toast.LENGTH_SHORT).show()
                 evaluateInput(p0)
             }
 
-            override fun afterTextChanged(p0: Editable?) {
-                return
-            }
-
+            override fun afterTextChanged(p0: Editable?) { return }
         }
         binding.serverInput.addTextChangedListener(serverTextWatcher)
-
-
-
         // Initially hide disconnect button
         binding.disconnectButton.visibility = View.GONE
+        // TODO: Turn The Connect Button Into The Disconnect Button When Connected
     }
 
     private fun setupPlayerView() {
@@ -123,11 +115,8 @@ class MainActivity : AppCompatActivity(),
         )
     }
 
-
-
     private fun handleConnection() {
         val manualInput = binding.serverInput.text.toString().trim()
-
         if (manualInput.isNotEmpty()) {
             // Manual connection
             connect(manualInput)
@@ -139,12 +128,10 @@ class MainActivity : AppCompatActivity(),
 
     private fun showServerSelectionDialog() {
         val servers = networkDiscovery.getServers()
-
         if (servers.isEmpty()) {
             Toast.makeText(this, "No servers found. Enter IP:port manually.", Toast.LENGTH_SHORT).show()
             return
         }
-
         val serverNames = servers.map { server ->
             // Format: "ServerName@192.168.1.100:5001" -> "ServerName (192.168.1.100:5001)"
             if (server.contains("@")) {
@@ -154,7 +141,7 @@ class MainActivity : AppCompatActivity(),
                 server
             }
         }.toTypedArray()
-
+        // The server selection dialog.
         AlertDialog.Builder(this)
             .setTitle("Select Server (${servers.size} found)")
             .setItems(serverNames) { _, which ->
@@ -165,14 +152,13 @@ class MainActivity : AppCompatActivity(),
     }
 
     private fun connect(serverAddress: String) {
+        // Check if the address is correct
         if (InetAddresses.isNumericAddress(serverAddress)){
             Log.d(TAG, "Connecting to: $serverAddress")
             Toast.makeText(this, "Connecting to: $serverAddress", Toast.LENGTH_SHORT).show()
             streamPlayer.connect(serverAddress)
-        }
-        else{
-            // This is a dialouge box, to explain what is going on.
-            // Sourced from https://developer.android.com/develop/ui/views/components/dialogs
+        } else {
+            // This is a dialog box, to explain how to input the IP address.
             val builder: AlertDialog.Builder = AlertDialog.Builder(this) // Use 'this as the context.
             builder.setTitle("Invalid IP Address")
             builder.setMessage("$serverAddress is not a valid IP address.\nIP Addresses usually follow the format of XXX.XXX.XX.XXX:XXXX\n\nTo retreive your IP address on Linux systems with NetworkManager installed, use `nmcli` in the Terminal to find your IP address.\nWhen a valid IP address is entered, the help button will become the connect button, and you can attempt to connect to TabCaster.")
@@ -197,40 +183,33 @@ class MainActivity : AppCompatActivity(),
                         or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                         or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                 )
-
         // Force landscape orientation
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-
         // Hide action bar
         supportActionBar?.hide()
-
         // Hide UI controls
         binding.controlsLayout.visibility = View.GONE
-
         isFullscreen = true
         Log.d(TAG, "Entered fullscreen landscape mode")
     }
 
     private fun exitFullscreen() {
         if (!isFullscreen) return
-
         // Restore system UI
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
-
         // Return to portrait
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-
         // Show action bar
         supportActionBar?.show()
-
         // Show UI controls
         binding.controlsLayout.visibility = View.VISIBLE
-
+        // Exit fullscreen and cancel streaming
         isFullscreen = false
         isStreaming = false
         Log.d(TAG, "Exited fullscreen mode")
     }
 
+    // Update the UI when the user connects to the server
     private fun updateUIForConnected() {
         Toast.makeText(this, "Connected - Ultra Low Latency", Toast.LENGTH_SHORT).show()
         binding.connectButton.visibility = View.GONE
@@ -239,6 +218,7 @@ class MainActivity : AppCompatActivity(),
         isStreaming = true
     }
 
+    // Update the UI when the user disconnects from the server
     private fun updateUIForDisconnected() {
         Toast.makeText(this, "Ready to connect", Toast.LENGTH_SHORT).show()
         binding.connectButton.visibility = View.VISIBLE
@@ -259,6 +239,7 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
+    // When a server is no longer discovered
     override fun onServerLost(serverName: String) {
         runOnUiThread {
             Toast.makeText(this, "Lost: $serverName", Toast.LENGTH_SHORT).show()
@@ -273,6 +254,7 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
+    // When a stream errors
     override fun onStreamError(error: String) {
         runOnUiThread {
             Toast.makeText(this, "Encountered error with stream: $error", Toast.LENGTH_SHORT).show()
