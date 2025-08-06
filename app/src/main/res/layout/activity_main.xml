@@ -51,7 +51,8 @@
                     android:layout_height="match_parent"
                     android:hint="IP:Port (optional)"
                     android:imeOptions="actionDone"
-                    android:inputType="text" />
+                    android:inputType="textNoSuggestions"
+                    />
 
             </com.google.android.material.textfield.TextInputLayout>
 
