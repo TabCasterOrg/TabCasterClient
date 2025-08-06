@@ -37,20 +37,16 @@ class MainActivity : AppCompatActivity(),
 
     // This is designed to grey out the connect button if the IP address is not valid. The user can still press the button to explain IP addresses.
     private fun evaluateInput(input : CharSequence?){
-        // TODO: Make sure that the button updates to say help. Currently, this doesn't work. The debug messages do though.
         var connectionButton = binding.connectButton
         // If an IP Address is valid, show 'Connect'
-        Log.d(TAG, "evaluateInput: input is $input")
         if (input != null && InetAddresses.isNumericAddress(input.toString())){
-            //connectionButton.setBackgroundColor(400)
+            // TODO: "Update the background colour and icon when a valid or nonvalid IP is entered"
             connectionButton.setText("Connect") // Change the text to connect when we have an IP address that we an connect to.
         }
-        // if it isn't, show 'Help'
+        // If it isn't, show 'Help'
         else {
-            //connectionButton.setBackgroundColor(0)
             connectionButton.setText("Help") // If we do not have an IP address, show the 'help'text.
         }
-        // TODO: "Update the drawable when a valid or nonvalid IP is entered
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -179,7 +175,7 @@ class MainActivity : AppCompatActivity(),
             // Sourced from https://developer.android.com/develop/ui/views/components/dialogs
             val builder: AlertDialog.Builder = AlertDialog.Builder(this) // Use 'this as the context.
             builder.setTitle("Invalid IP Address")
-            builder.setMessage("$serverAddress is not a valid IP address. \n IP Addresses follow the format of XXX.XXX.XX.XXX:XXXX \n To retreive your IP address on Linux systems with NetworkManager installed, use `nmcli` to find your IP address.")
+            builder.setMessage("$serverAddress is not a valid IP address.\nIP Addresses usually follow the format of XXX.XXX.XX.XXX:XXXX\n\nTo retreive your IP address on Linux systems with NetworkManager installed, use `nmcli` in the Terminal to find your IP address.\nWhen a valid IP address is entered, the help button will become the connect button, and you can attempt to connect to TabCaster.")
             val dialog: AlertDialog = builder.create()
             dialog.show()
         }
