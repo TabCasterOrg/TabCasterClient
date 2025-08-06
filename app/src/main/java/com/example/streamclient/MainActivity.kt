@@ -1,15 +1,23 @@
 package com.example.streamclient3
 
 import android.content.pm.ActivityInfo
+import android.net.InetAddresses
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.Log
+import android.util.Patterns
 import android.view.View
 import android.widget.ArrayAdapter
+import android.widget.Button
+import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import com.example.streamclient3.databinding.ActivityMainBinding
+import java.net.InetAddress
+import kotlin.math.log
 
 class MainActivity : AppCompatActivity(),
     NetworkDiscovery.DiscoveryCallback,
@@ -25,6 +33,24 @@ class MainActivity : AppCompatActivity(),
 
     companion object {
         private const val TAG = "StreamClient"
+    }
+
+    // This is designed to grey out the connect button if the IP address is not valid. The user can still press the button to explain IP addresses.
+    private fun evaluateInput(input : CharSequence?){
+        // TODO: Make sure that the button updates to say help. Currently, this doesn't work. The debug messages do though.
+        var connectionButton = findViewById<Button>(R.id.serversButton); // Get the server button and change some variables.
+        // If an IP Address is valid, show 'Connect'
+        Log.d(TAG, "evaluateInput: input is $input")
+        if (input != null && InetAddresses.isNumericAddress(input.toString())){
+            connectionButton.setBackgroundColor(1)
+            connectionButton.setText("Connect") // Change the text to connect when we have an IP address that we an connect to.
+        }
+        // if it isn't, show 'Help'
+        else {
+            connectionButton.setBackgroundColor(0)
+            connectionButton.setText("Help") // If we do not have an IP address, show the 'help'text.
+        }
+        // TODO: "Update the drawable when a valid or nonvalid IP is entered
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -62,6 +88,29 @@ class MainActivity : AppCompatActivity(),
 
         }
 
+        // This is here to make the connection button update when a button is or isnt available. More responsive to the user.
+
+        val serverTextWatcher : TextWatcher = object : TextWatcher {
+            override fun beforeTextChanged(p0: CharSequence?, p1: Int, p2: Int, p3: Int) {
+                return
+            }
+
+            override fun onTextChanged(p0: CharSequence?, p1: Int, p2: Int, p3: Int) {
+                //Toast.makeText(this, p0, Toast.LENGTH_SHORT).show()
+                evaluateInput(p0)
+            }
+
+            override fun afterTextChanged(p0: Editable?) {
+                return
+            }
+
+        }
+        val servinputfound = findViewById<EditText>(R.id.serverInput)
+        Log.d(TAG, "setupUI: $servinputfound")
+        servinputfound.addTextChangedListener(serverTextWatcher) // You must do it via findviewbyid, since using the binding makes the application crash.
+
+
+
         // Initially hide disconnect button
         binding.disconnectButton.visibility = View.GONE
     }
@@ -80,6 +129,8 @@ class MainActivity : AppCompatActivity(),
         )
     }
 
+
+
     private fun handleConnection() {
         val manualInput = binding.serverInput.text.toString().trim()
 
@@ -87,8 +138,8 @@ class MainActivity : AppCompatActivity(),
             // Manual connection
             connect(manualInput)
         } else {
-            // Show discovered servers
-            showServerSelectionDialog()
+            // Tell user
+            Toast.makeText(this, "Please enter a valid IP Address", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -120,10 +171,20 @@ class MainActivity : AppCompatActivity(),
     }
 
     private fun connect(serverAddress: String) {
-        Log.d(TAG, "Connecting to: $serverAddress")
-        Toast.makeText(this, "Connecting to: $serverAddress", Toast.LENGTH_SHORT).show()
-
-        streamPlayer.connect(serverAddress)
+        if (InetAddresses.isNumericAddress(serverAddress)){
+            Log.d(TAG, "Connecting to: $serverAddress")
+            Toast.makeText(this, "Connecting to: $serverAddress", Toast.LENGTH_SHORT).show()
+            streamPlayer.connect(serverAddress)
+        }
+        else{
+            // This is a dialouge box, to explain what is going on.
+            // Sourced from https://developer.android.com/develop/ui/views/components/dialogs
+            val builder: AlertDialog.Builder = AlertDialog.Builder(this) // Use 'this as the context.
+            builder.setTitle("Invalid IP Address")
+            builder.setMessage("$serverAddress is not a valid IP address. \n IP Addresses follow the format of XXX.XXX.XX.XXX:XXXX \n To retreive your IP address on Linux systems with NetworkManager installed, use `nmcli` to find your IP address.")
+            val dialog: AlertDialog = builder.create()
+            dialog.show()
+        }
     }
 
     private fun disconnect() {
