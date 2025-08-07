@@ -99,8 +99,10 @@ class MainActivity : AppCompatActivity(),
         }
         binding.serverInput.addTextChangedListener(serverTextWatcher)
         // Initially hide disconnect button
-        binding.disconnectButton.visibility = View.GONE
         // TODO: Turn The Connect Button Into The Disconnect Button When Connected
+        binding.disconnectButton.visibility = View.GONE
+        // TODO: Figure Out Why The Center Text Does Not Update
+        //binding.centerText.text = introText // Change the text
     }
 
     private fun setupPlayerView() {
@@ -175,6 +177,7 @@ class MainActivity : AppCompatActivity(),
         streamPlayer.release()
         exitFullscreen()
         updateUIForDisconnected()
+        //binding.centerText.text = introText // Change the text
     }
 
     private fun enterFullscreen() {
@@ -219,7 +222,7 @@ class MainActivity : AppCompatActivity(),
         binding.serversButton.visibility = View.GONE
         binding.disconnectButton.visibility = View.VISIBLE
         isStreaming = true
-        binding.centerText.text = ""
+        //binding.centerText.text = ""
     }
 
     // Update the UI when the user disconnects from the server
@@ -229,7 +232,7 @@ class MainActivity : AppCompatActivity(),
         binding.serversButton.visibility = View.VISIBLE
         binding.disconnectButton.visibility = View.GONE
         isStreaming = false
-        binding.centerText.text = introText // Change the text
+        //binding.centerText.text = introText // Change the text
     }
 
     // NetworkDiscovery.DiscoveryCallback

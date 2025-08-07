@@ -24,9 +24,8 @@
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            app:layout_constraintBottom_toTopOf="@+id/controlsLayout"
             app:layout_constraintBaseline_toTopOf="@id/controlsLayout"
-            >
+            app:layout_constraintBottom_toTopOf="@+id/controlsLayout">
 
             <TextView
                 android:id="@+id/centerText"
@@ -41,13 +40,6 @@
         </androidx.constraintlayout.widget.ConstraintLayout>
 
     </FrameLayout>
-
-
-
-    <!-- TODO: Make this properly centered using another layout -->
-
-
-
     <!-- Controls Layout - Bottom section -->
     <LinearLayout
         android:id="@+id/controlsLayout"
