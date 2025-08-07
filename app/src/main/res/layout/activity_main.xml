@@ -19,27 +19,30 @@
         app:layout_constraintBottom_toTopOf="@+id/controlsLayout"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent" >
 
-    <androidx.constraintlayout.widget.ConstraintLayout
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        app:layout_constraintBottom_toTopOf="@+id/controlsLayout"
-        app:layout_constraintBaseline_toTopOf="@id/controlsLayout"
-        app:layout_constraintVertical_weight="0.8"
-        >
-
-        <TextView
-            android:id="@+id/centerText"
+        <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:gravity="center"
-            android:text="Welcome To TabCaster\nStart a server on the host machine and connect to use this monitor."
-            android:textColor="#FFFFFF"
-            android:textSize="40dp"
-            android:textStyle="bold" />
+            app:layout_constraintBottom_toTopOf="@+id/controlsLayout"
+            app:layout_constraintBaseline_toTopOf="@id/controlsLayout"
+            >
 
-    </androidx.constraintlayout.widget.ConstraintLayout>
+            <TextView
+                android:id="@+id/centerText"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="Welcome To TabCaster\nStart a server on the host machine and connect to use this monitor."
+                android:textColor="#FFFFFF"
+                android:textSize="40dp"
+                android:textStyle="bold" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </FrameLayout>
+
+
 
     <!-- TODO: Make this properly centered using another layout -->
 
@@ -66,8 +69,10 @@
             <com.google.android.material.textfield.TextInputLayout
                 style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
                 android:id="@+id/serverTextFieldLayout"
-                android:layout_width="900dp"
-                android:layout_height="wrap_content">
+                android:layout_height="wrap_content"
+                android:layout_width="wrap_content"
+                android:layout_weight="75">
+                <!-- Layout weight is really nice because it prevents fixed-size elements, instead adapting to screen sizes. -->
 
                 <!-- IP Input | Keep the 'match-parent' in. use the parent to adjust the size! -->
                 <com.google.android.material.textfield.TextInputEditText
@@ -84,11 +89,11 @@
             <!-- Connect Button -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/connectButton"
-                android:layout_width="100dp"
+                android:layout_width="wrap_content"
                 android:layout_height="match_parent"
                 android:layout_marginStart="8dp"
                 android:layout_marginEnd="8dp"
-                android:layout_weight="1"
+                android:layout_weight="5"
                 android:drawableLeft="@drawable/connect_icon"
 
                 android:text="Help"
@@ -100,11 +105,11 @@
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/serversButton"
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="100dp"
+                android:layout_width="wrap_content"
                 android:layout_height="match_parent"
                 android:layout_marginStart="8dp"
                 android:layout_marginEnd="8dp"
-                android:layout_weight="1"
+                android:layout_weight="5"
                 app:icon="@drawable/servers_icon"
                 android:text="Servers" />
             <!-- Using app:icon over android:drawable makes it green -->
@@ -113,11 +118,11 @@
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/hideButton"
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="0dp"
+                android:layout_width="50dp"
                 android:layout_height="match_parent"
                 android:layout_marginStart="8dp"
                 android:layout_marginEnd="8dp"
-                android:layout_weight="1"
+                android:layout_weight="0"
                 app:icon="@drawable/hide_icon"
                 android:gravity="center"
                 />
