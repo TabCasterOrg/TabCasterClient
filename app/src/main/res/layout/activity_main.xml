@@ -16,20 +16,34 @@
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:background="#000000"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintBottom_toTopOf="@+id/controlsLayout"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toTopOf="@+id/controlsLayout" />
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
-    <TextView
-        android:id="@+id/centerText"
-        android:gravity="center"
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:text="TabCaster"
-        android:textSize="100dp"
-        android:textStyle="bold"
-        android:textColor="#FFFFFF"/>
+        app:layout_constraintBottom_toTopOf="@+id/controlsLayout"
+        app:layout_constraintBaseline_toTopOf="@id/controlsLayout"
+        app:layout_constraintVertical_weight="0.8"
+        >
+
+        <TextView
+            android:id="@+id/centerText"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="Welcome To TabCaster\nStart a server on the host machine and connect to use this monitor."
+            android:textColor="#FFFFFF"
+            android:textSize="40dp"
+            android:textStyle="bold" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- TODO: Make this properly centered using another layout -->
+
+
 
     <!-- Controls Layout - Bottom section -->
     <LinearLayout
@@ -51,6 +65,7 @@
             <!-- Server Input -->
             <com.google.android.material.textfield.TextInputLayout
                 style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:id="@+id/serverTextFieldLayout"
                 android:layout_width="900dp"
                 android:layout_height="wrap_content">
 

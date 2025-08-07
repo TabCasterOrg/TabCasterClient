@@ -31,6 +31,8 @@ class MainActivity : AppCompatActivity(),
     private var isFullscreen = false
     private var uiIsVisible = true // The UI is to start visible, and then be collapsed by the user.
 
+    private val introText = "Welcome To TabCaster\nStart a server on the host machine and connect to use this monitor."
+
     companion object {
         private const val TAG = "StreamClient"
     }
@@ -155,6 +157,7 @@ class MainActivity : AppCompatActivity(),
         // Check if the address is correct
         if (InetAddresses.isNumericAddress(serverAddress)){
             Log.d(TAG, "Connecting to: $serverAddress")
+
             Toast.makeText(this, "Connecting to: $serverAddress", Toast.LENGTH_SHORT).show()
             streamPlayer.connect(serverAddress)
         } else {
@@ -216,6 +219,7 @@ class MainActivity : AppCompatActivity(),
         binding.serversButton.visibility = View.GONE
         binding.disconnectButton.visibility = View.VISIBLE
         isStreaming = true
+        binding.centerText.text = ""
     }
 
     // Update the UI when the user disconnects from the server
@@ -225,6 +229,7 @@ class MainActivity : AppCompatActivity(),
         binding.serversButton.visibility = View.VISIBLE
         binding.disconnectButton.visibility = View.GONE
         isStreaming = false
+        binding.centerText.text = introText // Change the text
     }
 
     // NetworkDiscovery.DiscoveryCallback
